@@ -213,16 +213,23 @@ func Server(ctx context.Context, conn net.Conn, config *Config) (*Conn, error) {
 				break
 			}
 			var peerPub []byte
+			// Standalone X25519 share first: xray-core's REALITY client derives
+			// its auth key from KeyShareKeys.Ecdhe, which is the standalone
+			// share. uTLS chrome/safari templates fill the X25519 key embedded
+			// in the X25519MLKEM768 share with a different keypair, so reading
+			// the mlkem-embedded key first breaks every client whose template
+			// emits both entries with distinct keys. Only fall back to the
+			// mlkem-embedded key when no standalone share exists.
 			for _, keyShare := range hs.clientHello.keyShares {
-				if keyShare.group == X25519MLKEM768 && len(keyShare.data) == mlkem.EncapsulationKeySize768+32 {
-					peerPub = keyShare.data[mlkem.EncapsulationKeySize768:]
+				if keyShare.group == X25519 && len(keyShare.data) == 32 {
+					peerPub = keyShare.data
 					break
 				}
 			}
 			if peerPub == nil {
 				for _, keyShare := range hs.clientHello.keyShares {
-					if keyShare.group == X25519 && len(keyShare.data) == 32 {
-						peerPub = keyShare.data
+					if keyShare.group == X25519MLKEM768 && len(keyShare.data) == mlkem.EncapsulationKeySize768+32 {
+						peerPub = keyShare.data[mlkem.EncapsulationKeySize768:]
 						break
 					}
 				}
